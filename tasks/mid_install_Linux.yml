@@ -37,6 +37,9 @@
     dest: "{{ now_mid_base_path }}/{{ now_instance_mid_install_uri.split('/')[-1] }}"
     force: no
 
+- name: Install unzip
+  package: name=unzip
+
 # Bug fixed in 2.1.1? spaces in file name bombs out, seeing this now on OSX brew install of Ansible, maybe fixed once it hits brew?
 - name: Unzip MID install file
   unarchive:
@@ -45,9 +48,33 @@
     creates: "{{ now_mid_base_path }}/agent"
     copy: no
 
-# - name: Install MID service
-#   raw: "{{ now_mid_base_path }}/agent/bin/mid.sh install"
-#   register: install_result
+
+# The ServiceNow MID configuration file (config.xml) will always appear changed as the mid.instance.password parameter is
+# encrypted on first run. Perform a cheap detection of first install through lineinfile, however, this will impact change 
+- name: Update MID Configuration
+  action: template src=templates/config.xml.j2 dest={{ now_mid_base_path }}/agent/config.xml
+  # lineinfile: 
+  #   dest: "{{ now_mid_base_path }}/agent/config.xml"
+  #   regexp: <parameter name="mid.instance.password" value="YOUR_INSTANCE_PASSWORD_HERE" encrypt="true"/>$
+  #   state: absent
+  
+- name: Check if MID service exists`
+  stat:
+    path: /etc/init.d/mid
+  register: p
+
+# TODO deltect if server daemon already installed
+- name: Install MID service
+  raw: "{{ now_mid_base_path }}/agent/bin/mid.sh install"
+  register: install_result
+  when: not p.stat.exists
+    
+- name: Start and enable mid service
+  service: 
+    name: mid
+    enabled: true
+    state: started
+
 
 # The ServiceNow MID configuration file (config.xml) will always appear changed as the mid.instance.password parameter is
 # encrypted on first run. Perform a cheap detection of first install through win_lineinfile, however, this will impact change 
